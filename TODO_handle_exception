@@ -1,0 +1,16 @@
+readdir 
+Traceback (most recent call last):
+  File "/home/danny.milosavljevic/src/imapfs-u/imapfs", line 262, in readdir
+    for entry_name in liveimap.reconnect_once(lambda : liveimap.connection.flat_list_simple(path)):
+  File "/home/danny.milosavljevic/source/imapfs-u/niceimap.py", line 251, in flat_list_simple
+    for name, flags in imap_connection.flat_list(base):
+  File "/home/danny.milosavljevic/source/imapfs-u/niceimap.py", line 229, in flat_list
+    state, folders = imap_connection.list(base)
+  File "/usr/lib64/python2.4/imaplib.py", line 469, in list
+    typ, dat = self._simple_command(name, directory, pattern)
+  File "/usr/lib64/python2.4/imaplib.py", line 1028, in _simple_command
+    return self._command_complete(name, self._command(name, *args))
+  File "/usr/lib64/python2.4/imaplib.py", line 860, in _command_complete
+    raise self.abort('command: %s => %s' % (name, val))
+imaplib.abort: command: LIST => socket error: EOF
+

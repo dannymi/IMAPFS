@@ -1,0 +1,8 @@
+uid range ?
+option whether to use SSL or not.
+message ids with "/" in them
+clear the cache regularily: folder_cache
+clear the cache regularily: message_id_cache
+clear the cache regularily: TNearestFolderCache
+done: "clear" the cache: cache_directory_attributes (items_cachetime)
+done: clear the cache: current_directory_contents

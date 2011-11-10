@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+
+# TODO readonly flag
+
+import imaplib
+import getpass
+import lisp
+from cStringIO import StringIO
+import codecs
+import niceimap
+
+host = "fabamail.fabagl.fabasoft.com"
+imap_connection = niceimap.nice_IMAP(host, 143)
+
+#imap_connection.capabilities
+#('IMAP4', 'IMAP4REV1', 'IDLE', 'LOGIN-REFERRALS', 'MAILBOX-REFERRALS', 'NAMESPACE', 'LITERAL+', 'UIDPLUS', 'CHILDREN', 'AUTH=NTLM')
+
+#imap_connection.authenticate("IMAP4")
+
+username = getpass.getuser() # "danny.milosavljevic"
+#print username
+
+password = getpass.getpass("%s@%s password: " % (username, host))
+
+#imap_connection.login_cram_md5(username, password)
+imap_connection.login(username, password)
+
+imap_connection.select(readonly = True)
+
+
+for name in imap_connection.flat_list_simple(""):
+	print name
+
+imap_connection.chdir("INBOX")
+
+for name in imap_connection.flat_list_simple("INBOX"):
+	print name
+
+#print "status", imap_connection.status("ALL")
+
+status, message_set = imap_connection.search(None, "ALL") # charset, criteria
+assert(status == "OK")
+
+# message_set = ["1 2 3 4"]
+
+message_set = message_set[0].split(" ")
+
+#message_set = "0:9999999"
+for message_id in message_set:
+	print "message_id", message_id
+	#print imap_connection.fetch(message_id, "(UID)")
+	status, items = imap_connection.fetch(message_id, '(FLAGS INTERNALDATE RFC822)')
+	number_flags_date_syntax, body = items[0]
+	# ('47 (FLAGS (\\Seen) INTERNALDATE "11-Apr-2007 13:11:23 +0200" RFC822 {12482}', 
+	#'X-MimeOLE: Produced By Microsoft Exchange V6.5\r\nReceived: by FABAMAIL.fabagl.fabasoft.com \r\n\tid <01C77C2A.23ACB406@FABAMAIL.fabagl.fabasoft.com>; 
+	#print "---"
+	#for item in items:
+	print body
+
+# state AUTH
+#imap_connection.check()
+
+# list(self, directory='""', pattern='*')
+# lsub(self, directory='""', pattern='*')
+# namespace(self)
+# noop(self)
+# partial(self, message_num, message_part, start, length)
+# recent(self)
+# rename(self, oldmailbox, newmailbox)
+# search(self, charset, *criteria)
+# fetch(self, message_set, message_parts)
+# expunge(self)
+# delete(self, mailbox) # mailbox
+# create(self, mailbox)
+# copy(self, message_set, new_mailbox)
+# append(self, mailbox, flags, date_time, message) # append message
+# (typ, [data]) = <instance>.uid(command, arg1, arg2, ...) # execute command with uid list
+# unsubscribe(self, mailbox)
+# ??? xatom
+
+"""
+typ, data = M.search(None, 'ALL')
+for num in data[0].split():
+    typ, data = M.fetch(num, '(RFC822)')
+"""
+
+"""
+Close:
+
+M.close()
+M.logout()
+
+"""
+
+

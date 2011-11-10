@@ -1,0 +1,21 @@
+~/source/imapfs-u $ python
+Python 2.5.2 (r252:60911, Dec 13 2008, 14:15:58) 
+[GCC 4.1.2 (Gentoo 4.1.2 p1.0.1)] on linux2
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import liveimap
+danny.milo@gmail.com@imap.gmail.com password: 
+niceimap.cache_directory_attributes() failed because list index out of range
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "liveimap.py", line 90, in <module>
+    connection.select(readonly = True)
+  File "niceimap.py", line 408, in select
+    self.cache_directory_attributes()
+  File "niceimap.py", line 428, in cache_directory_attributes
+    for item in parse_items(items):
+  File "niceimap.py", line 165, in parse_items
+    yield dict(pair(item))
+  File "niceimap.py", line 42, in pair
+    value = items[1]
+IndexError: list index out of range
+>>> 

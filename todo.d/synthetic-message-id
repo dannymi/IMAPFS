@@ -1,0 +1,2 @@
+Note: [RFC-2822] requires that all messages have a valid "From" header.  Therefore, the "from", "sender", and "reply-to" members in the envelope can not be NIL.
+

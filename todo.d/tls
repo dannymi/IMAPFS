@@ -1,0 +1,10 @@
+
+from tlslite.integration.IMAP4_TLS import IMAP4_TLS, IMAP4_TLS_PORT
+
+IMAP4_TLS("fabamail.fabagl.fabasoft.com", IMAP4_TLS_PORT) # , "danny.milosavljevic")
+
+#/usr/lib64/python2.4/site-packages/tlslite/integration/IMAP4_TLS.py
+#/usr/lib64/python2.4/site-packages/tlslite/integration/POP3_TLS.py
+#/usr/lib64/python2.4/site-packages/tlslite/integration/SMTP_TLS.py
+
+

@@ -1,0 +1,17 @@
+DPAO17 SELECT INBOX
+
+* 2201 EXISTS
+
+* 0 RECENT
+
+* FLAGS (\Seen \Answered \Flagged \Deleted \Draft $MDNSent)
+
+* OK [PERMANENTFLAGS (\Seen \Answered \Flagged \Deleted \Draft $MDNSent)] Permanent flags
+
+* OK [UNSEEN 65] Is the first unseen message
+
+* OK [UIDVALIDITY 600] UIDVALIDITY value
+
+DPAO17 OK [READ-WRITE] SELECT completed.
+
+

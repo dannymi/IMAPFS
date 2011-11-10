@@ -1,0 +1,38 @@
+This is imapfs, a fuse filesystem that allows you to mount a mailbox that is provided to you via IMAP4.
+
+Copyright (C) 2007 Danny Milosavljevic
+
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program (in file "COPYING"); if not, write to the Free Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+Usage
+=====
+
+mkdir -p ~/mount/mail
+
+export IMAPFS_USER="foobar@bar.com"
+export IMAPFS_IMAP_HOST="imap.gmail.com"
+export IMAPFS_USE_SSL="1"
+
+./imapfs -d ~/mount/mail
+
+<fix the bugs that invariably WILL happen>
+
+(to run unattended, without debugging: ./imapfs ~/mount/mail)
+
+cd ~/mount/mail/
+ls
+cd INBOX
+ls
+
+cat '<3583532323@foobar.baz.com>'
+cp '<3583532323@foobar.baz.com>' /tmp/
+rm -f '<3583532323@foobar.baz.com>'
+
+Contact
+=======
+Danny Milosavljevic <danny.milo@gmail.com>
+

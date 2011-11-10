@@ -1,0 +1,339 @@
+#!/usr/bin/env python
+
+import fuse
+import stat
+import liveimap
+import errno
+import os
+import sys
+import niceimap
+import exceptions
+import time
+import lisp
+import timeout
+
+fuse.fuse_python_api = (0, 2)
+fuse.feature_assert('stateful_files')
+
+def extract_node_message_id(node):
+		if node.find("/") > -1:
+			return node.split("/")[0]
+		else:
+			return node
+
+def split_request(path):
+		global folder_cache
+
+		assert(path.startswith("/"))
+		path = path[1:]
+
+		path = path.decode("utf-8")
+
+		#print >>sys.stderr, "nearest_folder start"
+		folder = folder_cache.nearest_folder(path)
+		#print >>sys.stderr, "nearest_folder end"
+
+		print >>sys.stderr, "path", path.encode("utf-8"), "folder", folder.encode("utf-8")
+
+		#if path in 
+		assert((path + "/").startswith(folder + "/"))
+		node = path[len(folder) + 1 : ]
+
+		return folder, node
+
+
+
+class TStatData(fuse.Stat):
+	def __init__(self):
+		self.st_mode = 0664 | stat.S_IFREG
+		self.st_ino = 0
+		self.st_dev = 0
+		self.st_nlink = 1
+		self.st_uid = os.getuid()
+		self.st_gid = os.getgid()
+		self.st_size = 0
+		self.st_atime = 0
+		self.st_mtime = 0
+		self.st_ctime = 0
+
+class TDirectoryStatData(fuse.Stat): # TStatData):
+	def __init__(self):
+		self.st_ino = 0
+		self.st_dev = 0
+		self.st_nlink = 1
+		self.st_uid = os.getuid()
+		self.st_gid = os.getgid()
+		self.st_size = 0
+		self.st_atime = 0
+		self.st_mtime = 0
+		self.st_ctime = 0
+
+		self.st_mode = 0755 | stat.S_IFDIR 
+		self.st_nlink = 2 # TODO
+		self.st_size = 2 # TODO
+
+class TNearestFolderCache(object):
+	def __init__(self, message_id_cache):
+		self.folders = {} # key = node, value = folder of node
+		self.message_id_cache = message_id_cache
+
+	def nearest_folder(self, path):
+		if path in self.folders:
+			return self.folders[path]
+
+		parts = path.split("/")
+
+		if len(parts) > 0 and parts[-1].startswith("<"): # performance hack: when file name starts with "<", assumed to be message id
+			parts = parts[:-1]
+
+		while len(parts) > 0:
+			nearest_folder = "/".join(parts)
+
+			#print >>sys.stderr, "maybe nearest", nearest_folder
+			status, foo = liveimap.reconnect_once(lambda : liveimap.connection.select(nearest_folder, readonly = True))
+			if status == "OK":
+				#print >>sys.stderr, "OK"
+				self.folders[path] = nearest_folder
+				self.message_id_cache.fetch(nearest_folder)
+				return nearest_folder
+
+			parts = parts[:-1]
+
+			if len(parts) == 1 and parts[0] == "":
+				break
+
+		print >>sys.stderr, "done"
+		return ""
+
+class TMessageIDCache(object):
+	# TODO expire old message ids
+	def __init__(self):
+		self.from_message_id = {}
+
+	def fetch(self, nearest_folder):
+		for message_uid, message_id in self.get_message_ids():
+			self.add(message_id, (nearest_folder, message_uid))
+
+	def get_message_ids(self):
+		for message_uid in liveimap.reconnect_once(lambda : liveimap.connection.get_message_uids()):
+			try:
+				# TODO s "/" "<something_else>"
+				uid, flags, size, date, subject, from_, sender, reply_to, to_, cc, bcc, in_reply_to, message_id = liveimap.reconnect_once(lambda : liveimap.connection.get_mail_envelope(message_uid))
+				#print >>sys.stderr, "UID compare", uid, message_uid, type(uid), type(message_uid)
+				assert(int(uid) == int(message_uid)) # left is int anyway, right is str most of the time
+				if lisp.symbol("Deleted") not in flags:
+					yield uid, message_id
+			except niceimap.ParseError, e:
+				# sigh...
+				yield message_uid, "strange_%d" % int(message_uid)
+
+	def add(self, message_id, thing):
+		self.from_message_id[message_id] = thing
+
+	def resolve(self, message_id):
+		return self.from_message_id[message_id]
+
+message_id_cache = TMessageIDCache()
+folder_cache = TNearestFolderCache(message_id_cache)
+
+class TIMAPFile(object):
+	def __init__(self, path, flags, *mode):
+		global message_id_cache
+		#print >>sys.stderr, "opening file", path
+
+		folder, node = split_request(path)
+		message_id = extract_node_message_id(node)
+
+		if message_id is None or not message_id.startswith("<"): # optimization until I find out why it tries to open stuff like "libc.so.6"
+			raise exceptions.IOError(errno.ENOENT, "No such file or directory '%s'" % path)
+
+		try:
+			x_folder, x_message_uid = message_id_cache.resolve(message_id)
+			if x_folder <> folder:
+				print >>sys.stderr, "error", "duplicate message id \"%s\" in folder \"%s\" and folder \"%s\"" % (message_id, folder, x_folder)
+
+			status, foo = liveimap.reconnect_once(lambda : liveimap.connection.select(folder, readonly = True))
+			if status == "OK":
+				# TODO check Deleted flag
+				self.body = liveimap.reconnect_once(lambda : liveimap.connection.get_mail_body(x_message_uid))
+				#print >>sys.stderr, "have body", len(self.body)
+			else:
+				raise exceptions.IOError(errno.EIO, "IO Error")
+				#return -errno.EIO
+	
+		except exceptions.Exception, e: # keyerror
+			print >>sys.stderr, "error while opening mail", e, type(e), dir(e), e.args, type(e.args), e.__class__
+			raise exceptions.IOError(errno.ENOENT, "No such file or directory '%s'" % path)
+
+	def read(self, length, offset):
+		#print >>sys.stderr, "read", length, offset
+		return self.body[offset : offset + length]
+
+	def release(self, flags):
+		pass
+
+	#def fgetattr(self):
+
+	def write(self, buffer, offset):
+		return -errno.EPERM
+
+	def fsync(self, is_fsync_file):
+		pass
+
+	def flush(self):
+		pass
+
+	def ftruncate(self, len):
+		return -errno.EPERM
+
+class TIMAPFs(fuse.Fuse):
+	def __init__(self, *args, **kwargs):
+		global message_id_cache
+
+		self.file_class = TIMAPFile
+		fuse.Fuse.__init__(self, *args, **kwargs)
+
+	def getattr(self, path):
+		global message_id_cache
+		#print >>sys.stderr, "getattr", path
+
+		folder, node = split_request(path)
+
+		if path == "/" or path == "":
+			# root
+			return TDirectoryStatData()
+
+		if node <> "":
+			message_id = extract_node_message_id(node)
+		else:
+			message_id = None
+
+		is_message = message_id is not None and message_id.startswith("<") # ugh
+
+		if not is_message:
+			folder = path[1:]
+
+		if folder.endswith("/tls") or folder.endswith("/x86_64") or folder.endswith("/libc.so.6") or folder.endswith("/libnss_nis.so.2") or folder.endswith("/libnss_files.so.2") or folder.endswith("/x86_64") or folder.endswith("/tls") or folder.endswith("/libnsl.so.1") or folder.endswith("/libnss_compat.so.2") or folder.endswith("/libnfsidmap.so.0") or folder.endswith("/libpthread.so.0") or folder.endswith("/libacl.so.1") or folder.endswith("/libattr.so.1"): # FIXME remove this workaround after I found out who the heck in glibc does the accesses on every program start of EVERY program
+			return -errno.ENOENT
+
+		status, foo = liveimap.reconnect_once(lambda : liveimap.connection.select(folder, readonly = True))
+		if status <> "OK":
+			print >>sys.stderr, "could not select folder \"%s\": %s" % (path, status)
+			return -errno.ENOENT
+
+		if is_message:
+				try:
+					x_folder, message_uid = message_id_cache.resolve(message_id)
+				except exceptions.KeyError, e:
+					return -errno.ENOENT
+
+				if x_folder <> folder:
+					print >>sys.stderr, "error", "duplicate message id \"%s\" in folder \"%s\" and folder \"%s\"" % (message_id, folder, x_folder)
+	
+				#print >>sys.stderr, "message_uid", message_uid
+				uid, flags, size, date, subject, from_, sender, reply_to, to_, cc, bcc, in_reply_to, message_id = liveimap.reconnect_once(lambda : liveimap.connection.get_mail_envelope(message_uid))
+				#print >>sys.stderr, "size", size
+				#print >>sys.stderr, "flags", flags
+				#print >>sys.stderr, "date", date
+	
+				if lisp.symbol("Deleted") in flags:
+					print >>sys.stderr, "... deleted"
+					return -errno.ENOENT
+	
+				stat_data = TStatData()
+				stat_data.st_size = long(size)
+				stat_data.st_mtime = long(date)
+				stat_data.st_ctime = stat_data.st_mtime
+	
+				#print >>sys.stderr, "foo", stat_data
+		else:
+			return TDirectoryStatData()
+
+		return stat_data
+
+	def readdir(self, path, offset):
+		yield fuse.Direntry(".")
+		yield fuse.Direntry("..")
+
+                assert(path.startswith("/"))
+                path = path[1:]
+
+		print >>sys.stderr, "readdir", path
+		# liveimap.connection.get_mail_body(number)
+
+		#return
+		for entry_name in liveimap.reconnect_once(lambda : liveimap.connection.flat_list_simple(path)):
+			#print >>sys.stderr, "entry", entry_name
+			yield fuse.Direntry(entry_name.encode("utf-8")) # from unicode
+
+		if path <> "":
+			for entry_name in self._readdir_mails(path):
+				yield fuse.Direntry(entry_name.encode("utf-8")) # from unicode
+
+	def _readdir_mails(self, rpath):
+		status, foo = liveimap.reconnect_once(lambda : liveimap.connection.select(rpath, readonly = True))
+		if status == "OK":
+			print >>sys.stderr, "reading mails...", rpath
+			for message_uid in liveimap.reconnect_once(lambda : liveimap.connection.get_message_uids()):
+				try:
+					# TODO s "/" "<something_else>"
+					message_id = self._get_message_id(message_uid)
+					if message_id is not None: # not deleted
+						yield message_id
+				except niceimap.ParseError, e:
+					# sigh...
+					yield "strange_%d" % int(message_uid)
+				except exceptions.LookupError, e:
+					# not found
+					yield "not_found_%d" % int(message_uid)
+		else:
+			print >>sys.stderr, "stat select(%s): %s" % (rpath, status)
+
+	#def open(self, path, flags):
+	#def read(self, path, size, offset):
+
+	def unlink(self, path):
+		folder, node = split_request(path)
+		message_id = extract_node_message_id(node)
+
+		if message_id is not None:
+			#print >>sys.stderr, "message_id", message_id
+			x_folder, message_uid = message_id_cache.resolve(message_id)
+			if x_folder <> folder:
+				print >>sys.stderr, "error", "duplicate message id \"%s\" in folder \"%s\" and folder \"%s\"" % (message_id, folder, x_folder)
+
+			status, foo = liveimap.reconnect_once(lambda : liveimap.connection.select(folder, readonly = None))
+			if status <> "OK":
+				return -errno.EACCES
+
+			print >>sys.stderr, "message_uid", message_uid
+			# TODO check read-only
+
+			liveimap.reconnect_once(lambda : liveimap.connection.unlink_message(message_uid))
+
+			print >>sys.stderr, "unlink done: ", path
+
+		return -errno.ENOENT
+
+	def _get_message_id(self, number):
+		uid, flags, size, date, subject, from_, sender, reply_to, to_, cc, bcc, in_reply_to, message_id = liveimap.reconnect_once(lambda : liveimap.connection.get_mail_envelope(number))
+		if lisp.symbol("Deleted") in flags:
+			#print >>sys.stderr, "skipping deleted mail", uid
+			return None
+		else:
+			return message_id
+
+def main():
+	usage = "imapfs"
+	server = TIMAPFs(version = "%prog " + fuse.__version__, usage = usage, dash_s_do = "setsingle")
+	#print server.getattr("/")
+	#print server.readdir("/", 0)
+	#print server.open("/foo", 0)
+
+	server.parse(errex = 1)
+	server.main()
+
+if __name__ == "__main__":
+	main()
+
+
